@@ -5,7 +5,7 @@ function emuToCm(emu) {
     // 1 inch = 914400 EMU, 1 inch = 2.54cm → 1cm ≈ 360000 EMU
     return +(v / 360000).toFixed(2);
 }
-
+let themeColorMap = {}; // theme / scheme renklerini buraya koyacağız
 // Global JSON (tüm sunum)
 let presentationJson = null;
 
@@ -59,6 +59,49 @@ document.getElementById("fileInput").addEventListener("change", async e => {
     let sldSz = presDoc.querySelector("p\\:sldSz,sldSz");
     let slideW = +sldSz.getAttribute("cx");
     let slideH = +sldSz.getAttribute("cy");
+
+    // THEME RENKLERINI OKU
+    try {
+        let presRelsPath = "ppt/_rels/presentation.xml.rels";
+        if (zip.file(presRelsPath)) {
+            let presRelsXml = await zip.file(presRelsPath).async("text");
+            let presRelsDoc = parser.parseFromString(presRelsXml, "application/xml");
+            let rels = presRelsDoc.querySelectorAll("Relationship");
+            let themeRel = null;
+            rels.forEach(r => {
+                let type = r.getAttribute("Type") || "";
+                if (type.includes("/theme")) {
+                    themeRel = r;
+                }
+            });
+            if (themeRel) {
+                let target = themeRel.getAttribute("Target"); // örn: "theme/theme1.xml" veya "../theme/theme1.xml"
+                let themePath = target.replace("..", "ppt");
+                if (!themePath.startsWith("ppt/")) {
+                    themePath = "ppt/" + themePath.replace(/^\/+/, "");
+                }
+
+                if (zip.file(themePath)) {
+                    let themeXml = await zip.file(themePath).async("text");
+                    let themeDoc = parser.parseFromString(themeXml, "application/xml");
+                    let clrScheme = themeDoc.querySelector("a\\:clrScheme,clrScheme");
+                    if (clrScheme) {
+                        Array.from(clrScheme.children).forEach(node => {
+                            // node localName accent1, accent2, dk1, lt1 vs.
+                            let name = node.localName || node.nodeName.split(":").pop();
+                            let srgb = node.querySelector("a\\:srgbClr,srgbClr");
+                            if (srgb && srgb.getAttribute("val")) {
+                                themeColorMap[name] = "#" + srgb.getAttribute("val");
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Theme okunamadı:", e);
+    }
+
 
     let slidePaths = Object.keys(zip.files)
         .filter(p => /ppt\/slides\/slide\d+\.xml$/.test(p))
@@ -139,16 +182,44 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                 outlineColor: null,
                 outlineWidth: null
             };
+
             if (spPr) {
+                // 1) FILL COLOR
                 let fillClr = spPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                if (fillClr) baseStyle.fillColor = "#" + fillClr.getAttribute("val");
+                if (fillClr && fillClr.getAttribute("val")) {
+                    baseStyle.fillColor = "#" + fillClr.getAttribute("val");
+                } else {
+                    // srgb yoksa schemeClr (accent1, accent2 vs.) dene
+                    let schemeClr = spPr.querySelector("a\\:solidFill > a\\:schemeClr, solidFill > schemeClr");
+                    if (schemeClr && schemeClr.getAttribute("val")) {
+                        let key = schemeClr.getAttribute("val");
+                        if (themeColorMap[key]) {
+                            baseStyle.fillColor = themeColorMap[key];
+                        }
+                    }
+                }
+
+                // 2) OUTLINE (border) COLOR + WIDTH
                 let ln = spPr.querySelector("a\\:ln,ln");
                 if (ln) {
                     let lnClr = ln.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                    if (lnClr) baseStyle.outlineColor = "#" + lnClr.getAttribute("val");
-                    if (ln.getAttribute("w")) baseStyle.outlineWidth = parseInt(ln.getAttribute("w"), 10);
+                    if (lnClr && lnClr.getAttribute("val")) {
+                        baseStyle.outlineColor = "#" + lnClr.getAttribute("val");
+                    } else {
+                        let lnScheme = ln.querySelector("a\\:solidFill > a\\:schemeClr, solidFill > schemeClr");
+                        if (lnScheme && lnScheme.getAttribute("val")) {
+                            let key = lnScheme.getAttribute("val");
+                            if (themeColorMap[key]) {
+                                baseStyle.outlineColor = themeColorMap[key];
+                            }
+                        }
+                    }
+                    if (ln.getAttribute("w")) {
+                        baseStyle.outlineWidth = parseInt(ln.getAttribute("w"), 10);
+                    }
                 }
             }
+
 
             // Determine if shape has text
             let txBody = sp.querySelector("a\\:txBody,txBody");
@@ -219,6 +290,13 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                             if (latin) runStyle.fontFamily = latin.getAttribute("typeface") || null;
                             let clr = rPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
                             if (clr) runStyle.color = "#" + clr.getAttribute("val");
+                            else {
+                                // Eğer metin rengi yoksa shape fillColor fallback olsun
+                                if (baseStyle.fillColor) {
+                                    runStyle.color = baseStyle.fillColor;
+                                }
+                            }
+
                         }
                         runs.push({ text, style: runStyle });
                     });
