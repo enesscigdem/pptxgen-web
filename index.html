@@ -9,66 +9,70 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 
     <style>
-        pre {
-            white-space: pre-wrap;
-            font-size: 12px;
-            background: #f9fafb;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-        }
-
-        .card {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-        }
-
-        .upload-area {
-            background: white;
-            border: 2px dashed #cbd5e1;
-            padding: 28px;
-            border-radius: 12px;
-            text-align: center;
-            transition: all .2s;
-        }
-
-        .upload-area:hover {
-            border-color: #6366f1;
-            background: #eef2ff;
-        }
-
-        .loader {
-            display: none;
-            text-align: center;
-            font-size: 13px;
-            color: #6366f1;
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            background: #eef2ff;
-            color: #3730a3;
-        }
+        pre { white-space: pre-wrap; font-size: 12px; background: #f9fafb; padding: 12px; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+        .upload-area { background: white; border: 2px dashed #cbd5e1; padding: 28px; border-radius: 12px; text-align: center; transition: all .2s; }
+        .upload-area:hover { border-color: #6366f1; background: #eef2ff; }
+        .loader { display:none; text-align:center; font-size:13px; color:#6366f1; }
+        .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:10px; background:#eef2ff; color:#3730a3; }
     </style>
 </head>
 
 <body class="bg-gray-50 min-h-screen">
 
-<!-- HEADER -->
-<header class="bg-white border-b shadow-sm">
-    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-        <span class="text-lg font-semibold tracking-wide text-gray-700">
-            📌 PPTX → JSON Layout Extractor
-        </span>
+<!-- SHARED HEADER -->
+<header class="bg-white shadow-sm border-b">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+
+        <div class="flex items-center space-x-2">
+            <span class="text-md font-semibold text-gray-700">PPTX Layout → JSON Analyzer</span>
+            <span class="badge">v1.0</span>
+        </div>
+
+        <nav class="flex space-x-6 text-sm">
+            <a href="index.html" class="nav-item">JSON Extractor</a>
+            <a href="editor.html" class="nav-item">Slide Renderer</a>
+        </nav>
+
     </div>
 </header>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        let links = document.querySelectorAll(".nav-item");
+        links.forEach(link => {
+            if (location.href.includes(link.getAttribute("href"))) {
+                link.classList.add("active");
+            }
+        });
+    });
+    function toggleCard(headerEl) {
+        let pre = headerEl.parentElement.querySelector(".slide-json");
+        let icon = headerEl.querySelector(".toggle-icon");
+
+        if (pre.classList.contains("hidden")) {
+            pre.classList.remove("hidden");
+            pre.style.maxHeight = "1000px";
+            pre.style.transition = "all .3s ease";
+            icon.textContent = "➖";
+        } else {
+            pre.style.maxHeight = "0px";
+            pre.classList.add("hidden")
+            icon.textContent = "➕";
+        }
+    }
+
+</script>
+
+<style>
+    .nav-item.active {
+        font-weight: 600;
+        color: #4f46e5;
+        border-bottom: 2px solid #4f46e5;
+        padding-bottom: 2px;
+    }
+</style>
+
 
 
 <!-- MAIN -->
@@ -76,8 +80,7 @@
 
     <!-- description -->
     <div class="card border-blue-100 bg-blue-50 text-blue-900 text-sm text-center">
-        PPTX dosyasındaki tüm metin, koordinat, stil ve obje bilgilerini
-        JSON formatında çıkaran analiz aracı.
+        PPTX dosyasındaki tüm metin, koordinat, stil ve obje bilgilerini JSON formatında çıkaran analiz aracı.
     </div>
 
     <!-- FILE INPUT CARD -->
@@ -89,19 +92,17 @@
     <!-- Loader -->
     <div id="loading" class="loader mt-2">⏳ PPTX okunuyor, slaytlar analiz ediliyor...</div>
 
-    <!-- GLOBAL JSON SUMMARY + ACTIONS -->
+    <!-- GLOBAL -->
     <div id="globalPanel" class="hidden card flex items-center justify-between text-sm">
         <div>
             <div id="fileInfo" class="font-medium text-gray-800"></div>
             <div id="statsInfo" class="text-xs text-gray-500 mt-1"></div>
         </div>
         <div class="space-x-2">
-            <button id="btnCopyAll"
-                    class="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow">
+            <button id="btnCopyAll" class="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow">
                 Tüm JSON'u Kopyala
             </button>
-            <button id="btnDownloadJson"
-                    class="text-xs bg-indigo-600 text-white px-3 py-1 rounded shadow">
+            <button id="btnDownloadJson" class="text-xs bg-indigo-600 text-white px-3 py-1 rounded shadow">
                 JSON İndir (.json)
             </button>
         </div>

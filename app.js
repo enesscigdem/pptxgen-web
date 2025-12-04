@@ -9,6 +9,21 @@ function emuToCm(emu) {
 // Global JSON (tüm sunum)
 let presentationJson = null;
 
+let lastJson = localStorage.getItem("presentationJson");
+if(lastJson){
+    presentationJson = JSON.parse(lastJson);
+}
+
+let mediaPath = "ppt/media/";
+
+async function getBase64(zip, path) {
+    let file = zip.file(path);
+    if (!file) return null;
+    let bin = await file.async("base64");
+    let ext = path.split(".").pop().toLowerCase();
+    return `data:image/${ext};base64,${bin}`;
+}
+
 document.getElementById("fileInput").addEventListener("change", async e => {
 
     let file = e.target.files[0];
@@ -77,107 +92,10 @@ document.getElementById("fileInput").addEventListener("change", async e => {
 
         let zIndex = 0;
 
-        // ========== TEXT SHAPES ==========
+        // ========== SHAPES & TEXT ==========
+        // Gather all shapes (text boxes and plain shapes). We no longer skip shapes without text so we can render background and decorative shapes.
         let shapes = doc.querySelectorAll("p\\:sp,sp");
         shapes.forEach((sp, idxShape) => {
-
-            // txBody bul
-            let txBody = sp.querySelector("a\\:txBody,txBody");
-            if (!txBody) return;
-
-            let paragraphs = txBody.querySelectorAll("a\\:p,p");
-            if (!paragraphs.length) return;
-
-            let allText = [];
-            let paraJson = [];
-
-            paragraphs.forEach(pNode => {
-                let pText = [];
-                let runs = [];
-                let pPr = pNode.querySelector("a\\:pPr,pPr");
-
-                // Bullet türü & level
-                let bulletType = "none";
-                let bulletLevel = 0;
-                if (pPr) {
-                    let buAuto = pPr.querySelector("a\\:buAutoNum,buAutoNum");
-                    let buChar = pPr.querySelector("a\\:buChar,buChar");
-                    let buNone = pPr.querySelector("a\\:buNone,buNone");
-                    if (buAuto) bulletType = "number";
-                    else if (buChar) bulletType = "bullet";
-                    else if (buNone) bulletType = "none";
-
-                    let lvl = pPr.getAttribute("lvl");
-                    if (lvl) bulletLevel = parseInt(lvl, 10);
-                }
-
-                // alignment
-                let align = null;
-                if (pPr) {
-                    let algnNode = pPr.querySelector("a\\:algn,algn");
-                    if (algnNode && algnNode.textContent) {
-                        align = algnNode.textContent;
-                    }
-                }
-
-                let rNodes = pNode.querySelectorAll("a\\:r,r");
-                rNodes.forEach(r => {
-                    let tNode = r.querySelector("a\\:t,t");
-                    if (!tNode) return;
-                    let text = tNode.textContent;
-                    if (!text.trim()) return;
-
-                    pText.push(text);
-
-                    let rPr = r.querySelector("a\\:rPr,rPr");
-                    let runStyle = {
-                        fontFamily: null,
-                        fontSize: null,
-                        bold: false,
-                        italic: false,
-                        underline: false,
-                        color: null
-                    };
-
-                    if (rPr) {
-                        if (rPr.getAttribute("sz"))
-                            runStyle.fontSize = parseInt(rPr.getAttribute("sz"), 10) / 100;
-                        runStyle.bold =
-                            rPr.getAttribute("b") === "1" || rPr.getAttribute("b") === "true";
-                        runStyle.italic =
-                            rPr.getAttribute("i") === "1" || rPr.getAttribute("i") === "true";
-                        let u = rPr.getAttribute("u");
-                        runStyle.underline = !!u && u !== "none";
-
-                        let latin = rPr.querySelector("a\\:latin,latin");
-                        if (latin) runStyle.fontFamily = latin.getAttribute("typeface") || null;
-
-                        let clr = rPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                        if (clr) runStyle.color = "#" + clr.getAttribute("val");
-                    }
-
-                    runs.push({
-                        text,
-                        style: runStyle
-                    });
-                });
-
-                if (pText.length) {
-                    allText.push(pText.join(""));
-                    paraJson.push({
-                        text: pText.join(""),
-                        bullet: {
-                            type: bulletType,
-                            level: bulletLevel
-                        },
-                        align,
-                        runs
-                    });
-                }
-            });
-
-            if (!allText.length) return;
-
             // geometry
             let xfrm = sp.querySelector("a\\:xfrm,xfrm");
             let geom = null;
@@ -202,69 +120,195 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                 }
             }
 
-            // placeholder türü
+            // placeholder type (for titles etc.)
             let ph = sp.querySelector("p\\:ph,ph");
             let placeholderType = ph ? ph.getAttribute("type") || null : null;
 
-            // top-level style (ilk run’dan)
-            let firstRunStyle = paraJson[0]?.runs[0]?.style || {};
+            // shape type (rectangle, roundRect, ellipse, etc.)
+            let prstGeom = sp.querySelector("a\\:prstGeom,prstGeom");
+            let shapeType = prstGeom ? prstGeom.getAttribute("prst") : null;
+
+            // shape fill and outline
+            let spPr = sp.querySelector("a\\:spPr,spPr");
+            let fillColor = null;
+            let outlineColor = null;
+            let outlineWidth = null;
+            if (spPr) {
+                let fillClr = spPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
+                if (fillClr) fillColor = "#" + fillClr.getAttribute("val");
+                let ln = spPr.querySelector("a\\:ln,ln");
+                if (ln) {
+                    let lnClr = ln.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
+                    if (lnClr) outlineColor = "#" + lnClr.getAttribute("val");
+                    if (ln.getAttribute("w")) outlineWidth = parseInt(ln.getAttribute("w"), 10);
+                }
+            }
+
+            // parse text paragraphs if present
+            let paragraphs = [];
+            let txBody = sp.querySelector("a\\:txBody,txBody");
+            if (txBody) {
+                let pNodes = txBody.querySelectorAll("a\\:p,p");
+                pNodes.forEach(pNode => {
+                    let pText = [];
+                    let runs = [];
+                    let pPr = pNode.querySelector("a\\:pPr,pPr");
+                    // Bullet type & level
+                    let bulletType = "none";
+                    let bulletLevel = 0;
+                    if (pPr) {
+                        let buAuto = pPr.querySelector("a\\:buAutoNum,buAutoNum");
+                        let buChar = pPr.querySelector("a\\:buChar,buChar");
+                        let buNone = pPr.querySelector("a\\:buNone,buNone");
+                        if (buAuto) bulletType = "number";
+                        else if (buChar) bulletType = "bullet";
+                        else if (buNone) bulletType = "none";
+                        let lvl = pPr.getAttribute("lvl");
+                        if (lvl) bulletLevel = parseInt(lvl, 10);
+                    }
+                    // alignment
+                    let align = null;
+                    if (pPr) {
+                        let algnNode = pPr.querySelector("a\\:algn,algn");
+                        if (algnNode && algnNode.textContent) align = algnNode.textContent;
+                    }
+                    // runs
+                    let rNodes = pNode.querySelectorAll("a\\:r,r");
+                    rNodes.forEach(r => {
+                        let tNode = r.querySelector("a\\:t,t");
+                        if (!tNode) return;
+                        let text = tNode.textContent;
+                        if (!text.trim()) return;
+                        pText.push(text);
+                        let rPr = r.querySelector("a\\:rPr,rPr");
+                        let runStyle = {
+                            fontFamily: null,
+                            fontSize: null,
+                            bold: false,
+                            italic: false,
+                            underline: false,
+                            color: null
+                        };
+                        if (rPr) {
+                            if (rPr.getAttribute("sz")) runStyle.fontSize = parseInt(rPr.getAttribute("sz"), 10) / 100;
+                            runStyle.bold = rPr.getAttribute("b") === "1" || rPr.getAttribute("b") === "true";
+                            runStyle.italic = rPr.getAttribute("i") === "1" || rPr.getAttribute("i") === "true";
+                            let u = rPr.getAttribute("u");
+                            runStyle.underline = !!u && u !== "none";
+                            let latin = rPr.querySelector("a\\:latin,latin");
+                            if (latin) runStyle.fontFamily = latin.getAttribute("typeface") || null;
+                            let clr = rPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
+                            if (clr) runStyle.color = "#" + clr.getAttribute("val");
+                        }
+                        runs.push({ text, style: runStyle });
+                    });
+                    if (pText.length) {
+                        paragraphs.push({
+                            text: pText.join(""),
+                            bullet: { type: bulletType, level: bulletLevel },
+                            align,
+                            runs
+                        });
+                    }
+                });
+            }
+
+            // build style object: use first run style as base
+            let firstRunStyle = paragraphs[0]?.runs[0]?.style || {};
             let topStyle = {
                 fontFamily: firstRunStyle.fontFamily || null,
                 fontSize: firstRunStyle.fontSize || null,
                 bold: firstRunStyle.bold || false,
                 italic: firstRunStyle.italic || false,
                 underline: firstRunStyle.underline || false,
-                align: paraJson[0]?.align || null,
+                align: paragraphs[0]?.align || null,
                 color: firstRunStyle.color || null,
-                fillColor: null,
-                outlineColor: null,
-                outlineWidth: null
+                fillColor: fillColor,
+                outlineColor: outlineColor,
+                outlineWidth: outlineWidth
             };
 
-            // shape fill/outline
-            let spPr = sp.querySelector("a\\:spPr,spPr");
-            if (spPr) {
-                let fillClr = spPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                if (fillClr) topStyle.fillColor = "#" + fillClr.getAttribute("val");
-
-                let ln = spPr.querySelector("a\\:ln,ln");
-                if (ln) {
-                    let lnClr = ln.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                    if (lnClr) topStyle.outlineColor = "#" + lnClr.getAttribute("val");
-                    if (ln.getAttribute("w"))
-                        topStyle.outlineWidth = parseInt(ln.getAttribute("w"), 10);
-                }
-            }
-
-            // eleman tipi mapping
-            let type = "textbox";
+            // determine element type
+            let type = "shape";
             if (placeholderType === "title" || placeholderType === "ctrTitle") type = "title";
             else if (placeholderType === "body") type = "content";
             else if (placeholderType === "sldNum") type = "slideNumber";
             else if (placeholderType === "dt") type = "date";
 
-            let elementJson = {
+            let contentObj = null;
+            if (paragraphs.length) {
+                // shape contains text
+                contentObj = {
+                    text: paragraphs.map(p => p.text).join("\n"),
+                    paragraphs: paragraphs
+                };
+            }
+
+            slideJson.elements.push({
                 id: `s${slideNumber}-el${idxShape + 1}`,
                 kind: "shape",
                 type,
                 placeholderType,
+                shapeType: shapeType || null,
                 zIndex: ++zIndex,
                 geometry: geom,
-                content: {
-                    text: allText.join("\n"),
-                    paragraphs: paraJson
-                },
+                content: contentObj,
                 style: topStyle
-            };
-
-            slideJson.elements.push(elementJson);
+            });
         });
 
         // ========== IMAGES ==========
         let pics = doc.querySelectorAll("p\\:pic,pic");
-        pics.forEach((pic, idxPic) => {
+
+        // ========== CHART OBJECTS ==========
+        let graphics = doc.querySelectorAll("p\\:graphicFrame, graphicFrame");
+
+        graphics.forEach((gf, idx) => {
+
+            let xfrm = gf.querySelector("a\\:xfrm,xfrm");
             let geom = null;
+
+            if (xfrm) {
+                let off = xfrm.querySelector("a\\:off,off");
+                let ext = xfrm.querySelector("a\\:ext,ext");
+                if (off && ext) {
+                    let x = +off.getAttribute("x");
+                    let y = +off.getAttribute("y");
+                    let w = +ext.getAttribute("cx");
+                    let h = +ext.getAttribute("cy");
+
+                    geom = {
+                        xEmu: x,
+                        yEmu: y,
+                        wEmu: w,
+                        hEmu: h,
+                        xCm: emuToCm(x),
+                        yCm: emuToCm(y),
+                        wCm: emuToCm(w),
+                        hCm: emuToCm(h)
+                    };
+                }
+            }
+
+            let chartNode = gf.querySelector("a\\:graphicData > c\\:chart, graphicData > chart");
+
+            let chartRef = chartNode ? chartNode.getAttribute("r:id") : null;
+
+            slideJson.elements.push({
+                id: `s${slideNumber}-chart${idx + 1}`,
+                kind: "chart",
+                type: "chart",
+                zIndex: ++zIndex,
+                geometry: geom,
+                chartRelId: chartRef
+            });
+        });
+
+        for (let idxPic = 0; idxPic < pics.length; idxPic++) {
+            let pic = pics[idxPic];
+
             let xfrm = pic.querySelector("a\\:xfrm,xfrm");
+            let geom = null;
             if (xfrm) {
                 let off = xfrm.querySelector("a\\:off,off");
                 let ext = xfrm.querySelector("a\\:ext,ext");
@@ -286,14 +330,13 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                 }
             }
 
-            // image relationship (r:embed)
+            // image relationship
             let blip = pic.querySelector("a\\:blipFill > a\\:blip, blipFill > blip");
             let imageRef = null;
             let imageName = null;
             if (blip) {
                 let rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
                 if (rId && relsMap[rId]) {
-                    // ../media/image1.png → ppt/media/image1.png
                     let target = relsMap[rId].replace("..", "ppt");
                     imageRef = target;
                     imageName = target.split("/").pop();
@@ -307,11 +350,18 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                 zIndex: ++zIndex,
                 geometry: geom,
                 imageRef,
-                imageName
+                imageName,
+                imageBase64: null
             };
 
             slideJson.elements.push(elem);
-        });
+
+            // Base64'i async olarak ekliyoruz ✔
+            if (imageRef) {
+                elem.imageBase64 = await getBase64(zip, imageRef);
+            }
+        }
+
 
         slidesJson.push(slideJson);
         totalElements += slideJson.elements.length;
@@ -324,21 +374,28 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         card.className = "card";
 
         card.innerHTML = `
-            <div class="flex justify-between items-center mb-2">
-                <div class="space-y-1">
-                    <h2 class="font-bold text-lg">📌 Slayt ${slideJson.slideNumber}</h2>
-                    <div class="space-x-2">
-                        <span class="badge">🧩 ${slideJson.elements.length} element</span>
-                        <span class="badge">🔤 ${textCount} text</span>
-                        <span class="badge">🖼️ ${imgCount} image</span>
-                    </div>
-                </div>
-                <button class="copyBtn text-xs bg-gray-100 px-2 py-1 rounded border">
-                    Bu Slayt JSON'unu Kopyala
-                </button>
+    <div class="flex justify-between items-center mb-2 cursor-pointer group" onclick="toggleCard(this)">
+        <div class="space-y-1">
+            <h2 class="font-bold text-lg flex items-center">
+                <span class="mr-2">📌 Slayt ${slideJson.slideNumber}</span>
+                <span class="toggle-icon text-gray-400 group-hover:text-gray-600 text-sm">➕</span>
+            </h2>
+            <div class="space-x-2">
+                <span class="badge">🧩 ${slideJson.elements.length} element</span>
+                <span class="badge">🔤 ${textCount} text</span>
+                <span class="badge">🖼️ ${imgCount} image</span>
             </div>
-            <pre>${JSON.stringify(slideJson, null, 2)}</pre>
-        `;
+        </div>
+
+        <button class="copyBtn text-xs bg-gray-100 px-2 py-1 rounded border">
+            JSON Kopyala
+        </button>
+    </div>
+
+    <pre class="slide-json hidden">${JSON.stringify(slideJson, null, 2)}</pre>
+`;
+
+
 
         out.appendChild(card);
     }
