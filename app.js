@@ -30,6 +30,9 @@ document.getElementById("fileInput").addEventListener("change", async e => {
     if (!file) return;
 
     let loading = document.getElementById("loading");
+    let progressContainer = document.getElementById("progressContainer");
+    let progressBar = document.getElementById("progressBar");
+    let progressLabel = document.getElementById("progressLabel");
     let out = document.getElementById("output");
     let globalPanel = document.getElementById("globalPanel");
     let fileInfo = document.getElementById("fileInfo");
@@ -39,6 +42,12 @@ document.getElementById("fileInput").addEventListener("change", async e => {
     loading.style.display = "block";
     globalPanel.classList.add("hidden");
     presentationJson = null;
+
+    // show progress bar and reset
+    if (progressContainer) progressContainer.style.display = "block";
+    if (progressLabel) progressLabel.style.display = "block";
+    if (progressBar) progressBar.style.width = "0%";
+    if (progressLabel) progressLabel.textContent = "0%";
 
     let arrayBuffer = await file.arrayBuffer();
     let zip = await JSZip.loadAsync(arrayBuffer);
@@ -58,7 +67,8 @@ document.getElementById("fileInput").addEventListener("change", async e => {
     let slidesJson = [];
     let totalElements = 0;
 
-    for (let p of slidePaths) {
+    for (let i = 0; i < slidePaths.length; i++) {
+        let p = slidePaths[i];
 
         // slide xml
         let xml = await zip.file(p).async("text");
@@ -91,12 +101,14 @@ document.getElementById("fileInput").addEventListener("change", async e => {
         };
 
         let zIndex = 0;
+        // counter for generic shapes (non-text)
+        let anonShapeCount = 0;
 
-        // ========== SHAPES & TEXT ==========
-        // Gather all shapes (text boxes and plain shapes). We no longer skip shapes without text so we can render background and decorative shapes.
+        // ========== SHAPES ==========
+        // Parse all shapes, capturing both text and plain shapes with fill/border
         let shapes = doc.querySelectorAll("p\\:sp,sp");
         shapes.forEach((sp, idxShape) => {
-            // geometry
+            // Determine geometry for this shape
             let xfrm = sp.querySelector("a\\:xfrm,xfrm");
             let geom = null;
             if (xfrm) {
@@ -120,39 +132,48 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                 }
             }
 
-            // placeholder type (for titles etc.)
-            let ph = sp.querySelector("p\\:ph,ph");
-            let placeholderType = ph ? ph.getAttribute("type") || null : null;
-
-            // shape type (rectangle, roundRect, ellipse, etc.)
-            let prstGeom = sp.querySelector("a\\:prstGeom,prstGeom");
-            let shapeType = prstGeom ? prstGeom.getAttribute("prst") : null;
-
-            // shape fill and outline
+            // base style from spPr (fill/border)
             let spPr = sp.querySelector("a\\:spPr,spPr");
-            let fillColor = null;
-            let outlineColor = null;
-            let outlineWidth = null;
+            let baseStyle = {
+                fillColor: null,
+                outlineColor: null,
+                outlineWidth: null
+            };
             if (spPr) {
                 let fillClr = spPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                if (fillClr) fillColor = "#" + fillClr.getAttribute("val");
+                if (fillClr) baseStyle.fillColor = "#" + fillClr.getAttribute("val");
                 let ln = spPr.querySelector("a\\:ln,ln");
                 if (ln) {
                     let lnClr = ln.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr");
-                    if (lnClr) outlineColor = "#" + lnClr.getAttribute("val");
-                    if (ln.getAttribute("w")) outlineWidth = parseInt(ln.getAttribute("w"), 10);
+                    if (lnClr) baseStyle.outlineColor = "#" + lnClr.getAttribute("val");
+                    if (ln.getAttribute("w")) baseStyle.outlineWidth = parseInt(ln.getAttribute("w"), 10);
                 }
             }
 
-            // parse text paragraphs if present
-            let paragraphs = [];
+            // Determine if shape has text
             let txBody = sp.querySelector("a\\:txBody,txBody");
-            if (txBody) {
-                let pNodes = txBody.querySelectorAll("a\\:p,p");
-                pNodes.forEach(pNode => {
+            let hasText = !!txBody;
+
+            // Determine placeholder type
+            let ph = sp.querySelector("p\\:ph,ph");
+            let placeholderType = ph ? ph.getAttribute("type") || null : null;
+
+            // Determine preset geometry type (e.g. rect, roundRect)
+            let prstGeom = sp.querySelector("a\\:prstGeom,prstGeom");
+            let prstType = prstGeom ? prstGeom.getAttribute("prst") || null : null;
+
+            if (hasText) {
+                // process paragraphs and runs
+                let paragraphs = txBody.querySelectorAll("a\\:p,p");
+                if (!paragraphs.length) return;
+
+                let allText = [];
+                let paraJson = [];
+                paragraphs.forEach(pNode => {
                     let pText = [];
                     let runs = [];
                     let pPr = pNode.querySelector("a\\:pPr,pPr");
+
                     // Bullet type & level
                     let bulletType = "none";
                     let bulletLevel = 0;
@@ -172,7 +193,6 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                         let algnNode = pPr.querySelector("a\\:algn,algn");
                         if (algnNode && algnNode.textContent) align = algnNode.textContent;
                     }
-                    // runs
                     let rNodes = pNode.querySelectorAll("a\\:r,r");
                     rNodes.forEach(r => {
                         let tNode = r.querySelector("a\\:t,t");
@@ -203,7 +223,8 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                         runs.push({ text, style: runStyle });
                     });
                     if (pText.length) {
-                        paragraphs.push({
+                        allText.push(pText.join(""));
+                        paraJson.push({
                             text: pText.join(""),
                             bullet: { type: bulletType, level: bulletLevel },
                             align,
@@ -211,98 +232,72 @@ document.getElementById("fileInput").addEventListener("change", async e => {
                         });
                     }
                 });
-            }
-
-            // build style object: use first run style as base
-            let firstRunStyle = paragraphs[0]?.runs[0]?.style || {};
-            let topStyle = {
-                fontFamily: firstRunStyle.fontFamily || null,
-                fontSize: firstRunStyle.fontSize || null,
-                bold: firstRunStyle.bold || false,
-                italic: firstRunStyle.italic || false,
-                underline: firstRunStyle.underline || false,
-                align: paragraphs[0]?.align || null,
-                color: firstRunStyle.color || null,
-                fillColor: fillColor,
-                outlineColor: outlineColor,
-                outlineWidth: outlineWidth
-            };
-
-            // determine element type
-            let type = "shape";
-            if (placeholderType === "title" || placeholderType === "ctrTitle") type = "title";
-            else if (placeholderType === "body") type = "content";
-            else if (placeholderType === "sldNum") type = "slideNumber";
-            else if (placeholderType === "dt") type = "date";
-
-            let contentObj = null;
-            if (paragraphs.length) {
-                // shape contains text
-                contentObj = {
-                    text: paragraphs.map(p => p.text).join("\n"),
-                    paragraphs: paragraphs
+                if (!allText.length) return;
+                // Top-level style from first run
+                let firstRunStyle = paraJson[0]?.runs[0]?.style || {};
+                let topStyle = {
+                    fontFamily: firstRunStyle.fontFamily || null,
+                    fontSize: firstRunStyle.fontSize || null,
+                    bold: firstRunStyle.bold || false,
+                    italic: firstRunStyle.italic || false,
+                    underline: firstRunStyle.underline || false,
+                    align: paraJson[0]?.align || null,
+                    color: firstRunStyle.color || null,
+                    fillColor: baseStyle.fillColor,
+                    outlineColor: baseStyle.outlineColor,
+                    outlineWidth: baseStyle.outlineWidth
                 };
+                // Map placeholder type to text type
+                let type = "textbox";
+                if (placeholderType === "title" || placeholderType === "ctrTitle") type = "title";
+                else if (placeholderType === "body") type = "content";
+                else if (placeholderType === "sldNum") type = "slideNumber";
+                else if (placeholderType === "dt") type = "date";
+                let elementJson = {
+                    id: `s${slideNumber}-el${idxShape + 1}`,
+                    kind: "shape",
+                    type,
+                    placeholderType,
+                    zIndex: ++zIndex,
+                    geometry: geom,
+                    content: {
+                        text: allText.join("\n"),
+                        paragraphs: paraJson
+                    },
+                    style: topStyle,
+                    shapeType: prstType
+                };
+                slideJson.elements.push(elementJson);
+            } else {
+                // Plain shape without text
+                let elementJson = {
+                    id: `s${slideNumber}-sh${++anonShapeCount}`,
+                    kind: "shape",
+                    type: "shape",
+                    placeholderType: null,
+                    zIndex: ++zIndex,
+                    geometry: geom,
+                    content: null,
+                    style: {
+                        fontFamily: null,
+                        fontSize: null,
+                        bold: false,
+                        italic: false,
+                        underline: false,
+                        align: null,
+                        color: null,
+                        fillColor: baseStyle.fillColor,
+                        outlineColor: baseStyle.outlineColor,
+                        outlineWidth: baseStyle.outlineWidth
+                    },
+                    shapeType: prstType
+                };
+                slideJson.elements.push(elementJson);
             }
-
-            slideJson.elements.push({
-                id: `s${slideNumber}-el${idxShape + 1}`,
-                kind: "shape",
-                type,
-                placeholderType,
-                shapeType: shapeType || null,
-                zIndex: ++zIndex,
-                geometry: geom,
-                content: contentObj,
-                style: topStyle
-            });
         });
 
         // ========== IMAGES ==========
         let pics = doc.querySelectorAll("p\\:pic,pic");
-
-        // ========== CHART OBJECTS ==========
-        let graphics = doc.querySelectorAll("p\\:graphicFrame, graphicFrame");
-
-        graphics.forEach((gf, idx) => {
-
-            let xfrm = gf.querySelector("a\\:xfrm,xfrm");
-            let geom = null;
-
-            if (xfrm) {
-                let off = xfrm.querySelector("a\\:off,off");
-                let ext = xfrm.querySelector("a\\:ext,ext");
-                if (off && ext) {
-                    let x = +off.getAttribute("x");
-                    let y = +off.getAttribute("y");
-                    let w = +ext.getAttribute("cx");
-                    let h = +ext.getAttribute("cy");
-
-                    geom = {
-                        xEmu: x,
-                        yEmu: y,
-                        wEmu: w,
-                        hEmu: h,
-                        xCm: emuToCm(x),
-                        yCm: emuToCm(y),
-                        wCm: emuToCm(w),
-                        hCm: emuToCm(h)
-                    };
-                }
-            }
-
-            let chartNode = gf.querySelector("a\\:graphicData > c\\:chart, graphicData > chart");
-
-            let chartRef = chartNode ? chartNode.getAttribute("r:id") : null;
-
-            slideJson.elements.push({
-                id: `s${slideNumber}-chart${idx + 1}`,
-                kind: "chart",
-                type: "chart",
-                zIndex: ++zIndex,
-                geometry: geom,
-                chartRelId: chartRef
-            });
-        });
 
         for (let idxPic = 0; idxPic < pics.length; idxPic++) {
             let pic = pics[idxPic];
@@ -362,9 +357,68 @@ document.getElementById("fileInput").addEventListener("change", async e => {
             }
         }
 
+        // ========== CHART FRAMES ==========
+        // Capture chart frames (e.g. donut, bar, pie) which are not treated as images
+        let graphics = doc.querySelectorAll("p\\:graphicFrame, graphicFrame");
+        graphics.forEach((gf, idxG) => {
+            // geometry
+            let gfXfrm = gf.querySelector("a\\:xfrm,xfrm");
+            let geom = null;
+            if (gfXfrm) {
+                let off = gfXfrm.querySelector("a\\:off,off");
+                let ext = gfXfrm.querySelector("a\\:ext,ext");
+                if (off && ext) {
+                    let x = +off.getAttribute("x");
+                    let y = +off.getAttribute("y");
+                    let w = +ext.getAttribute("cx");
+                    let h = +ext.getAttribute("cy");
+                    geom = {
+                        xEmu: x,
+                        yEmu: y,
+                        wEmu: w,
+                        hEmu: h,
+                        xCm: emuToCm(x),
+                        yCm: emuToCm(y),
+                        wCm: emuToCm(w),
+                        hCm: emuToCm(h)
+                    };
+                }
+            }
+            // find chart id
+            let chartNode = gf.querySelector("a\\:graphicData > c\\:chart, graphicData > chart");
+            let chartRel = null;
+            if (chartNode) {
+                chartRel = chartNode.getAttribute("r:id") || chartNode.getAttribute("id");
+            }
+            slideJson.elements.push({
+                id: `s${slideNumber}-chart${idxG + 1}`,
+                kind: "chart",
+                type: "chart",
+                placeholderType: null,
+                zIndex: ++zIndex,
+                geometry: geom,
+                content: null,
+                style: {
+                    fillColor: null,
+                    outlineColor: null,
+                    outlineWidth: null
+                },
+                chartRelId: chartRel
+            });
+        });
+
 
         slidesJson.push(slideJson);
         totalElements += slideJson.elements.length;
+
+        // Update progress bar after each slide processed
+        let progressBar = document.getElementById("progressBar");
+        let progressLabel = document.getElementById("progressLabel");
+        if (progressBar) {
+            let percent = Math.round(((i + 1) / slidePaths.length) * 100);
+            progressBar.style.width = percent + "%";
+            if (progressLabel) progressLabel.textContent = percent + "%";
+        }
 
         // === SLIDE CARD UI ===
         let textCount = slideJson.elements.filter(el => el.type !== "image").length;
@@ -414,6 +468,10 @@ document.getElementById("fileInput").addEventListener("change", async e => {
     };
 
     loading.style.display = "none";
+
+    // hide progress after complete
+    if (progressContainer) progressContainer.style.display = "none";
+    if (progressLabel) progressLabel.style.display = "none";
 
     // GLOBAL PANEL
     fileInfo.textContent = `Dosya: ${file.name}`;

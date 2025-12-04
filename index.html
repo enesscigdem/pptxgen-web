@@ -15,6 +15,8 @@
         .upload-area:hover { border-color: #6366f1; background: #eef2ff; }
         .loader { display:none; text-align:center; font-size:13px; color:#6366f1; }
         .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:10px; background:#eef2ff; color:#3730a3; }
+        /* limit slide json area when expanded */
+        .slide-json { max-height: 300px; overflow-y: auto; }
     </style>
 </head>
 
@@ -91,6 +93,11 @@
 
     <!-- Loader -->
     <div id="loading" class="loader mt-2">⏳ PPTX okunuyor, slaytlar analiz ediliyor...</div>
+    <!-- Progress bar shown during slide extraction -->
+    <div id="progressContainer" class="w-full bg-gray-200 rounded h-2 mt-2 hidden">
+        <div id="progressBar" class="bg-indigo-600 h-2 rounded" style="width:0%"></div>
+    </div>
+    <div id="progressLabel" class="text-xs text-gray-500 mt-1 hidden"></div>
 
     <!-- GLOBAL -->
     <div id="globalPanel" class="hidden card flex items-center justify-between text-sm">
