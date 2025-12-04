@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Arfitect • PPTX Layout → JSON Analyzer</title>
+    <title>PPTX Layout → JSON Analyzer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Tailwind -->
@@ -17,13 +17,15 @@
             border-radius: 8px;
             border: 1px solid #e5e7eb;
         }
+
         .card {
             background: white;
             border: 1px solid #e5e7eb;
             border-radius: 12px;
             padding: 16px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
         }
+
         .upload-area {
             background: white;
             border: 2px dashed #cbd5e1;
@@ -32,15 +34,27 @@
             text-align: center;
             transition: all .2s;
         }
+
         .upload-area:hover {
             border-color: #6366f1;
             background: #eef2ff;
         }
+
         .loader {
-            display:none;
-            text-align:center;
-            font-size:13px;
-            color:#6366f1;
+            display: none;
+            text-align: center;
+            font-size: 13px;
+            color: #6366f1;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            background: #eef2ff;
+            color: #3730a3;
         }
     </style>
 </head>
@@ -49,7 +63,7 @@
 
 <!-- HEADER -->
 <header class="bg-white border-b shadow-sm">
-    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
         <span class="text-lg font-semibold tracking-wide text-gray-700">
             📌 PPTX → JSON Layout Extractor
         </span>
@@ -62,8 +76,8 @@
 
     <!-- description -->
     <div class="card border-blue-100 bg-blue-50 text-blue-900 text-sm text-center">
-        PPTX dosyasındaki tüm metin, koordinat ve obje bilgilerini
-        JSON formatında çıkaran analiz aracıdır.
+        PPTX dosyasındaki tüm metin, koordinat, stil ve obje bilgilerini
+        JSON formatında çıkaran analiz aracı.
     </div>
 
     <!-- FILE INPUT CARD -->
@@ -73,10 +87,28 @@
     </div>
 
     <!-- Loader -->
-    <div id="loading" class="loader">⏳ Okunuyor, analiz ediliyor...</div>
+    <div id="loading" class="loader mt-2">⏳ PPTX okunuyor, slaytlar analiz ediliyor...</div>
+
+    <!-- GLOBAL JSON SUMMARY + ACTIONS -->
+    <div id="globalPanel" class="hidden card flex items-center justify-between text-sm">
+        <div>
+            <div id="fileInfo" class="font-medium text-gray-800"></div>
+            <div id="statsInfo" class="text-xs text-gray-500 mt-1"></div>
+        </div>
+        <div class="space-x-2">
+            <button id="btnCopyAll"
+                    class="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow">
+                Tüm JSON'u Kopyala
+            </button>
+            <button id="btnDownloadJson"
+                    class="text-xs bg-indigo-600 text-white px-3 py-1 rounded shadow">
+                JSON İndir (.json)
+            </button>
+        </div>
+    </div>
 
     <!-- OUTPUT SECTION -->
-    <div id="output" class="space-y-4 mt-8"></div>
+    <div id="output" class="space-y-4 mt-4"></div>
 
 </div>
 
