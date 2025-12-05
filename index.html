@@ -2,126 +2,154 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>PPTX Layout → JSON Analyzer</title>
+    <title>PPTX Layout Analyzer - JSON Extractor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- Tailwind -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-
-    <style>
-        pre { white-space: pre-wrap; font-size: 12px; background: #f9fafb; padding: 12px; border-radius: 8px; border: 1px solid #e5e7eb; }
-        .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
-        .upload-area { background: white; border: 2px dashed #cbd5e1; padding: 28px; border-radius: 12px; text-align: center; transition: all .2s; }
-        .upload-area:hover { border-color: #6366f1; background: #eef2ff; }
-        .loader { display:none; text-align:center; font-size:13px; color:#6366f1; }
-        .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:10px; background:#eef2ff; color:#3730a3; }
-        /* limit slide json area when expanded */
-        .slide-json { max-height: 300px; overflow-y: auto; }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
 </head>
-
-<body class="bg-gray-50 min-h-screen">
-
-<!-- SHARED HEADER -->
-<header class="bg-white shadow-sm border-b">
-    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-
-        <div class="flex items-center space-x-2">
-            <span class="text-md font-semibold text-gray-700">PPTX Layout → JSON Analyzer</span>
-            <span class="badge">v1.0</span>
+<body>
+<!-- Header -->
+<header class="header">
+    <div class="header-container">
+        <div class="logo-section">
+            <div class="logo-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10,9 9,9 8,9"/>
+                </svg>
+            </div>
+            <span class="logo-text">PPTX Analyzer</span>
+            <span class="version-badge">v2.0</span>
         </div>
-
-        <nav class="flex space-x-6 text-sm">
-            <a href="index.html" class="nav-item">JSON Extractor</a>
-            <a href="editor.html" class="nav-item">Slide Renderer</a>
+        <nav class="nav">
+            <a href="index.html" class="nav-link active">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                </svg>
+                JSON Extractor
+            </a>
+            <a href="editor.html" class="nav-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="3" y1="9" x2="21" y2="9"/>
+                    <line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+                Slide Renderer
+            </a>
+            <a href="converter.html" class="nav-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16,3 21,3 21,8"/>
+                    <line x1="4" y1="20" x2="21" y2="3"/>
+                    <polyline points="21,16 21,21 16,21"/>
+                    <line x1="15" y1="15" x2="21" y2="21"/>
+                    <line x1="4" y1="4" x2="9" y2="9"/>
+                </svg>
+                Format Converter
+            </a>
         </nav>
-
     </div>
 </header>
 
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        let links = document.querySelectorAll(".nav-item");
-        links.forEach(link => {
-            if (location.href.includes(link.getAttribute("href"))) {
-                link.classList.add("active");
-            }
-        });
-    });
-    function toggleCard(headerEl) {
-        let pre = headerEl.parentElement.querySelector(".slide-json");
-        let icon = headerEl.querySelector(".toggle-icon");
-
-        if (pre.classList.contains("hidden")) {
-            pre.classList.remove("hidden");
-            pre.style.maxHeight = "1000px";
-            pre.style.transition = "all .3s ease";
-            icon.textContent = "➖";
-        } else {
-            pre.style.maxHeight = "0px";
-            pre.classList.add("hidden")
-            icon.textContent = "➕";
-        }
-    }
-
-</script>
-
-<style>
-    .nav-item.active {
-        font-weight: 600;
-        color: #4f46e5;
-        border-bottom: 2px solid #4f46e5;
-        padding-bottom: 2px;
-    }
-</style>
-
-
-
-<!-- MAIN -->
-<div class="max-w-6xl mx-auto py-10 px-4 space-y-6">
-
-    <!-- description -->
-    <div class="card border-blue-100 bg-blue-50 text-blue-900 text-sm text-center">
-        PPTX dosyasındaki tüm metin, koordinat, stil ve obje bilgilerini JSON formatında çıkaran analiz aracı.
-    </div>
-
-    <!-- FILE INPUT CARD -->
-    <div class="upload-area">
-        <input id="fileInput" type="file" accept=".pptx" class="text-sm font-medium">
-        <p class="text-xs text-gray-500 mt-2">Dosya tarayıcı içinde işlenir, upload edilmez.</p>
-    </div>
-
-    <!-- Loader -->
-    <div id="loading" class="loader mt-2">⏳ PPTX okunuyor, slaytlar analiz ediliyor...</div>
-    <!-- Progress bar shown during slide extraction -->
-    <div id="progressContainer" class="w-full bg-gray-200 rounded h-2 mt-2 hidden">
-        <div id="progressBar" class="bg-indigo-600 h-2 rounded" style="width:0%"></div>
-    </div>
-    <div id="progressLabel" class="text-xs text-gray-500 mt-1 hidden"></div>
-
-    <!-- GLOBAL -->
-    <div id="globalPanel" class="hidden card flex items-center justify-between text-sm">
-        <div>
-            <div id="fileInfo" class="font-medium text-gray-800"></div>
-            <div id="statsInfo" class="text-xs text-gray-500 mt-1"></div>
+<!-- Main Content -->
+<main class="main-container">
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="hero-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14,2 14,8 20,8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
         </div>
-        <div class="space-x-2">
-            <button id="btnCopyAll" class="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow">
-                Tüm JSON'u Kopyala
-            </button>
-            <button id="btnDownloadJson" class="text-xs bg-indigo-600 text-white px-3 py-1 rounded shadow">
-                JSON İndir (.json)
-            </button>
+        <h1 class="hero-title">PPTX to JSON Extractor</h1>
+        <p class="hero-description">
+            Extract all text, coordinates, styles, and object information from PowerPoint files into structured JSON format.
+            Processing happens entirely in your browser - no upload required.
+        </p>
+    </section>
+
+    <!-- Upload Section -->
+    <section class="upload-section">
+        <div class="upload-area" id="dropZone">
+            <div class="upload-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17,8 12,3 7,8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </div>
+            <div class="upload-text">
+                <span class="upload-main">Drop your PPTX file here</span>
+                <span class="upload-sub">or click to browse</span>
+            </div>
+            <input id="fileInput" type="file" accept=".pptx" class="file-input">
+            <p class="upload-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                Secure: Files are processed locally in your browser
+            </p>
         </div>
-    </div>
+    </section>
 
-    <!-- OUTPUT SECTION -->
-    <div id="output" class="space-y-4 mt-4"></div>
+    <!-- Progress Section -->
+    <section class="progress-section" id="progressSection">
+        <div class="progress-header">
+            <div class="progress-spinner"></div>
+            <span class="progress-text">Analyzing presentation...</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <span class="progress-label" id="progressLabel">0%</span>
+    </section>
 
-</div>
+    <!-- Global Info Panel -->
+    <section class="info-panel" id="globalPanel">
+        <div class="info-content">
+            <div class="info-details">
+                <div class="info-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </div>
+                <div>
+                    <div id="fileInfo" class="info-file"></div>
+                    <div id="statsInfo" class="info-stats"></div>
+                </div>
+            </div>
+            <div class="info-actions">
+                <button id="btnCopyAll" class="btn btn-secondary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    Copy All JSON
+                </button>
+                <button id="btnDownloadJson" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7,10 12,15 17,10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download JSON
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slides Output -->
+    <section class="slides-container" id="output"></section>
+</main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="app.js"></script>
-
 </body>
 </html>
