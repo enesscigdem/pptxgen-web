@@ -601,6 +601,7 @@ async function processFile(file) {
                 italic: false,
                 underline: false,
                 color: null,
+                backgroundColor: null,
             }
             if (rPr) {
                 if (rPr.getAttribute("sz")) runStyle.fontSize = Number.parseInt(rPr.getAttribute("sz"), 10) / 100
@@ -610,6 +611,7 @@ async function processFile(file) {
                 runStyle.underline = !!u && u !== "none"
                 const latin = rPr.querySelector("a\\:latin,latin")
                 if (latin) runStyle.fontFamily = latin.getAttribute("typeface") || null
+                // Text color
                 let clrNode = rPr.querySelector("a\\:solidFill > a\\:srgbClr, solidFill > srgbClr")
                 if (clrNode && clrNode.getAttribute("val")) {
                     runStyle.color = "#" + clrNode.getAttribute("val")
@@ -620,6 +622,17 @@ async function processFile(file) {
                         if (themeColorMap[key]) runStyle.color = themeColorMap[key]
                     } else if (baseStyle.fillColor) {
                         runStyle.color = baseStyle.fillColor
+                    }
+                }
+                // Text background color (highlight)
+                const highlightNode = rPr.querySelector("a\\:highlight > a\\:srgbClr, highlight > srgbClr")
+                if (highlightNode && highlightNode.getAttribute("val")) {
+                    runStyle.backgroundColor = "#" + highlightNode.getAttribute("val")
+                } else {
+                    const highlightScheme = rPr.querySelector("a\\:highlight > a\\:schemeClr, highlight > schemeClr")
+                    if (highlightScheme && highlightScheme.getAttribute("val")) {
+                        const key = highlightScheme.getAttribute("val")
+                        if (themeColorMap[key]) runStyle.backgroundColor = themeColorMap[key]
                     }
                 }
             }
@@ -695,6 +708,25 @@ async function processFile(file) {
             const placeholderType = ph ? ph.getAttribute("type") || null : null
             const prstGeom = sp.querySelector("a\\:prstGeom,prstGeom")
             const prstType = prstGeom ? prstGeom.getAttribute("prst") || null : null
+            
+            // Extract text body properties (vertical alignment, text direction, etc.)
+            let textBodyProps = {
+                verticalAlign: null,
+                textDirection: null,
+                wrap: null,
+            }
+            if (txBody) {
+                const bodyPr = txBody.querySelector("a\\:bodyPr,bodyPr")
+                if (bodyPr) {
+                    const anchor = bodyPr.getAttribute("anchor")
+                    if (anchor) textBodyProps.verticalAlign = anchor // top, middle, bottom, etc.
+                    const vert = bodyPr.getAttribute("vert")
+                    if (vert) textBodyProps.textDirection = vert // horz, vert, etc.
+                    const wrap = bodyPr.getAttribute("wrap")
+                    if (wrap) textBodyProps.wrap = wrap
+                }
+            }
+            
             if (txBody) {
                 const paragraphs = txBody.querySelectorAll("a\\:p,p")
                 const allText = []
@@ -740,42 +772,61 @@ async function processFile(file) {
                     rNodes.forEach((r) => {
                         const tNode = r.querySelector("a\\:t,t")
                         if (!tNode) return
-                        const text = tNode.textContent
-                        if (!text.trim()) return
+                        const text = tNode.textContent || ""
+                        // Include all text, even if empty - empty text might be intentional spacing
                         pText.push(text)
                         const rPr = r.querySelector("a\\:rPr,rPr")
                         const runStyle = _getRunStyle(rPr, baseStyle)
                         runs.push({ text, style: runStyle })
                     })
-                    if (pText.length) {
-                        allText.push(pText.join(""))
-                        paraJson.push({
-                            text: pText.join(""),
-                            bullet: {
-                                type: bulletType,
-                                level: bulletLevel,
-                                // char may be undefined for number lists
-                                char: typeof bulletChar !== "undefined" ? bulletChar : null,
-                                startAt: typeof bulletStart !== "undefined" ? bulletStart : null,
-                            },
-                            align,
-                            runs,
-                        })
-                    }
+                    // Always add paragraph, even if empty - preserves structure
+                    const paraText = pText.join("")
+                    allText.push(paraText)
+                    paraJson.push({
+                        text: paraText,
+                        bullet: {
+                            type: bulletType,
+                            level: bulletLevel,
+                            // char may be undefined for number lists
+                            char: typeof bulletChar !== "undefined" ? bulletChar : null,
+                            startAt: typeof bulletStart !== "undefined" ? bulletStart : null,
+                        },
+                        align,
+                        runs,
+                    })
                 })
-                if (allText.length) {
-                    const firstRunStyle = paraJson[0]?.runs[0]?.style || {}
+                // Always process if we have paragraphs, even if all text is empty
+                if (paraJson.length > 0) {
+                    const firstRunStyle = paraJson[0]?.runs?.[0]?.style || {}
+                    // Get default alignment from bodyPr if paragraph doesn't have one
+                    let defaultAlign = paraJson[0]?.align || null
+                    if (!defaultAlign && txBody) {
+                        const bodyPr = txBody.querySelector("a\\:bodyPr,bodyPr")
+                        if (bodyPr) {
+                            // Check for default paragraph alignment in bodyPr
+                            const defPPr = bodyPr.querySelector("a\\:defPPr,defPPr")
+                            if (defPPr) {
+                                const algnNode = defPPr.querySelector("a\\:algn,algn")
+                                if (algnNode && algnNode.textContent) {
+                                    defaultAlign = algnNode.textContent
+                                }
+                            }
+                        }
+                    }
                     const topStyle = {
                         fontFamily: firstRunStyle.fontFamily || null,
                         fontSize: firstRunStyle.fontSize || null,
                         bold: firstRunStyle.bold || false,
                         italic: firstRunStyle.italic || false,
                         underline: firstRunStyle.underline || false,
-                        align: paraJson[0]?.align || null,
+                        align: defaultAlign,
                         color: firstRunStyle.color || null,
                         fillColor: baseStyle.fillColor,
                         outlineColor: baseStyle.outlineColor,
                         outlineWidth: baseStyle.outlineWidth,
+                        verticalAlign: textBodyProps.verticalAlign,
+                        textDirection: textBodyProps.textDirection,
+                        wrap: textBodyProps.wrap,
                     }
                     let typeVal = "textbox"
                     if (placeholderType === "title" || placeholderType === "ctrTitle") typeVal = "title"
@@ -858,12 +909,79 @@ async function processFile(file) {
             }
         }
 
-        function _processGraphicFrame(gf) {
+        async function _processGraphicFrame(gf) {
             const gfXfrm = gf.querySelector("a\\:xfrm,xfrm")
             const geom = _getGeometry(gfXfrm)
             const chartNode = gf.querySelector("a\\:graphicData > c\\:chart, graphicData > chart")
             if (chartNode) {
                 let chartRel = chartNode.getAttribute("r:id") || chartNode.getAttribute("id")
+                let chartData = null
+                
+                // Try to extract chart data from chart XML
+                if (chartRel && relsMap[chartRel]) {
+                    try {
+                        const chartPath = relsMap[chartRel].replace(/\.\./g, "ppt")
+                        if (zip.file(chartPath)) {
+                            const chartXml = await zip.file(chartPath).async("text")
+                            const chartDoc = parser.parseFromString(chartXml, "application/xml")
+                            
+                            // Extract chart type
+                            const plotArea = chartDoc.querySelector("c\\:plotArea,plotArea")
+                            let chartType = "unknown"
+                            if (plotArea) {
+                                const barChart = plotArea.querySelector("c\\:barChart,barChart")
+                                const lineChart = plotArea.querySelector("c\\:lineChart,lineChart")
+                                const pieChart = plotArea.querySelector("c\\:pieChart,pieChart")
+                                const areaChart = plotArea.querySelector("c\\:areaChart,areaChart")
+                                const scatterChart = plotArea.querySelector("c\\:scatterChart,scatterChart")
+                                
+                                if (barChart) chartType = "bar"
+                                else if (lineChart) chartType = "line"
+                                else if (pieChart) chartType = "pie"
+                                else if (areaChart) chartType = "area"
+                                else if (scatterChart) chartType = "scatter"
+                            }
+                            
+                            // Extract series data
+                            const series = chartDoc.querySelectorAll("c\\:ser,ser")
+                            const seriesData = []
+                            series.forEach((ser) => {
+                                const serName = ser.querySelector("c\\:tx > c\\:v,v")
+                                const name = serName ? serName.textContent : ""
+                                
+                                // Extract data points
+                                const val = ser.querySelector("c\\:val > c\\:numLit,numLit")
+                                const points = []
+                                if (val) {
+                                    const ptNodes = val.querySelectorAll("c\\:pt,pt")
+                                    ptNodes.forEach((pt) => {
+                                        const idx = pt.getAttribute("idx")
+                                        const v = pt.querySelector("c\\:v,v")
+                                        if (v) {
+                                            points.push({
+                                                index: idx ? Number.parseInt(idx, 10) : null,
+                                                value: v.textContent
+                                            })
+                                        }
+                                    })
+                                }
+                                
+                                seriesData.push({
+                                    name,
+                                    points
+                                })
+                            })
+                            
+                            chartData = {
+                                type: chartType,
+                                series: seriesData
+                            }
+                        }
+                    } catch (chartErr) {
+                        console.warn("Chart data extraction failed", chartErr)
+                    }
+                }
+                
                 orderedElements.push({
                     id: `s${slideNumber}-chart${orderedElements.length + 1}`,
                     kind: "chart",
@@ -878,6 +996,7 @@ async function processFile(file) {
                         outlineWidth: null,
                     },
                     chartRelId: chartRel,
+                    chartData: chartData,
                 })
                 return
             }
@@ -918,11 +1037,131 @@ async function processFile(file) {
                 } else if (localName === "pic") {
                     await _processPicture(child)
                 } else if (localName === "graphicFrame") {
-                    _processGraphicFrame(child)
+                    await _processGraphicFrame(child)
                 } else if (localName === "grpSp") {
                     await _traverse(child)
                 }
             }
+        }
+
+        // First, check for actual date and slide number values in the slide itself
+        // These are often in the slide's spTree, not just in the layout
+        const slideSpTree = doc.querySelector("p\\:spTree,spTree")
+        if (slideSpTree) {
+            // Check for date and slide number placeholders in the slide itself
+            const slideShapes = slideSpTree.querySelectorAll("p\\:sp,sp")
+            slideShapes.forEach((sp) => {
+                const phNode = sp.querySelector("p\\:ph,ph")
+                if (phNode) {
+                    const phType = phNode.getAttribute("type")
+                    if (phType === "dt" || phType === "sldNum") {
+                        const txBody = sp.querySelector("a\\:txBody,txBody")
+                        if (txBody) {
+                            const paragraphs = txBody.querySelectorAll("a\\:p,p")
+                            // Collect all text from all paragraphs and runs
+                            let collectedText = ""
+                            const allRuns = []
+                            paragraphs.forEach((pNode) => {
+                                const rNodes = pNode.querySelectorAll("a\\:r,r")
+                                rNodes.forEach((r) => {
+                                    const tNode = r.querySelector("a\\:t,t")
+                                    if (tNode) {
+                                        const text = tNode.textContent || ""
+                                        collectedText += text
+                                        const rPr = r.querySelector("a\\:rPr,rPr")
+                                        const spPr = sp.querySelector("a\\:spPr,spPr")
+                                        const baseStyle = _parseBaseStyle(spPr)
+                                        const runStyle = _getRunStyle(rPr, baseStyle)
+                                        allRuns.push({ text, style: runStyle })
+                                    }
+                                })
+                            })
+                            // Extract placeholder even if text is empty - we'll use defaults if needed
+                            const xfrm = sp.querySelector("a\\:xfrm,xfrm")
+                            const geom = _getGeometry(xfrm)
+                            if (geom) {
+                                const spPr = sp.querySelector("a\\:spPr,spPr")
+                                const baseStyle = _parseBaseStyle(spPr)
+                                const pPr = paragraphs[0]?.querySelector("a\\:pPr,pPr")
+                                let align = null
+                                if (pPr) {
+                                    const algnNode = pPr.querySelector("a\\:algn,algn")
+                                    if (algnNode && algnNode.textContent) align = algnNode.textContent
+                                }
+                                // Also check bodyPr for default alignment
+                                if (!align && txBody) {
+                                    const bodyPr = txBody.querySelector("a\\:bodyPr,bodyPr")
+                                    if (bodyPr) {
+                                        const defPPr = bodyPr.querySelector("a\\:defPPr,defPPr")
+                                        if (defPPr) {
+                                            const algnNode = defPPr.querySelector("a\\:algn,algn")
+                                            if (algnNode && algnNode.textContent) align = algnNode.textContent
+                                        }
+                                    }
+                                }
+                                const typeValue = phType === "sldNum" ? "slideNumber" : "date"
+                                // Check if this element already exists in orderedElements
+                                const exists = orderedElements.some(el => 
+                                    el.placeholderType === phType && 
+                                    el.geometry && 
+                                    Math.abs(el.geometry.xCm - geom.xCm) < 0.1 &&
+                                    Math.abs(el.geometry.yCm - geom.yCm) < 0.1
+                                )
+                                if (!exists) {
+                                    // Use collected text or generate default
+                                    let finalText = collectedText
+                                    if (!finalText && phType === "dt") {
+                                        const now = new Date()
+                                        finalText = now.toLocaleDateString("tr-TR", { 
+                                            year: "numeric", 
+                                            month: "long", 
+                                            day: "numeric" 
+                                        })
+                                    } else if (!finalText && phType === "sldNum") {
+                                        finalText = String(slideNumber)
+                                    }
+                                    // If no runs collected, create one with the final text
+                                    if (allRuns.length === 0 && finalText) {
+                                        const rPr = paragraphs[0]?.querySelector("a\\:r,r")?.querySelector("a\\:rPr,rPr")
+                                        const runStyle = _getRunStyle(rPr, baseStyle)
+                                        allRuns.push({ text: finalText, style: runStyle })
+                                    }
+                                    orderedElements.push({
+                                        id: `s${slideNumber}-${phType}${orderedElements.length + 1}`,
+                                        kind: "shape",
+                                        type: typeValue,
+                                        placeholderType: phType,
+                                        zIndex: ++orderedZ,
+                                        geometry: geom,
+                                        content: {
+                                            text: finalText,
+                                            paragraphs: [{
+                                                text: finalText,
+                                                bullet: { type: "none", level: 0 },
+                                                align,
+                                                runs: allRuns.length > 0 ? allRuns : [{ text: finalText, style: {} }]
+                                            }]
+                                        },
+                                        style: {
+                                            fontFamily: allRuns[0]?.style?.fontFamily || null,
+                                            fontSize: allRuns[0]?.style?.fontSize || null,
+                                            bold: allRuns[0]?.style?.bold || false,
+                                            italic: allRuns[0]?.style?.italic || false,
+                                            underline: allRuns[0]?.style?.underline || false,
+                                            align,
+                                            color: allRuns[0]?.style?.color || null,
+                                            fillColor: baseStyle.fillColor,
+                                            outlineColor: baseStyle.outlineColor,
+                                            outlineWidth: baseStyle.outlineWidth,
+                                        },
+                                        shapeType: null,
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+            })
         }
 
         const spTreeNode = doc.querySelector("p\\:spTree,spTree")
@@ -955,8 +1194,16 @@ async function processFile(file) {
                                 const phNode = child.querySelector("p\\:ph,ph")
                                 const phType = phNode ? phNode.getAttribute("type") || null : null
                                 if (phType === "dt" || phType === "sldNum" || phType === "ftr" || phType === "hdr" || phType === "pgNum") {
+                                    // Check if we already have this from the slide itself
                                     const xfrmNode = child.querySelector("a\\:xfrm,xfrm")
                                     const geom = _getGeometry(xfrmNode)
+                                    const exists = orderedElements.some(el => 
+                                        el.placeholderType === phType && 
+                                        el.geometry && 
+                                        Math.abs(el.geometry.xCm - geom.xCm) < 0.1 &&
+                                        Math.abs(el.geometry.yCm - geom.yCm) < 0.1
+                                    )
+                                    if (exists) return // Skip if already added from slide
                                     const spPrNode = child.querySelector("a\\:spPr,spPr")
                                     const baseStyle2 = _parseBaseStyle(spPrNode)
                                     const txBodyNode = child.querySelector("a\\:txBody,txBody")
@@ -1000,17 +1247,19 @@ async function processFile(file) {
                                             rNodes2.forEach((r2) => {
                                                 const tNode2 = r2.querySelector("a\\:t,t")
                                                 if (!tNode2) return
-                                                const text2 = tNode2.textContent
-                                                if (!text2.trim()) return
+                                                const text2 = tNode2.textContent || ""
+                                                // Include all text, even if empty
                                                 pText2.push(text2)
                                                 const rPr2 = r2.querySelector("a\\:rPr,rPr")
                                                 const runStyle2 = _getRunStyle(rPr2, baseStyle2)
                                                 runs2.push({ text: text2, style: runStyle2 })
                                             })
-                                            if (pText2.length) {
-                                                allText2.push(pText2.join(""))
+                                            // Always add paragraph, even if empty
+                                            const paraText2 = pText2.join("")
+                                            if (paraText2 || runs2.length) {
+                                                allText2.push(paraText2)
                                                 paraJson2.push({
-                                                    text: pText2.join(""),
+                                                    text: paraText2,
                                                     bullet: {
                                                         type: bulletType2,
                                                         level: bulletLevel2,
@@ -1043,6 +1292,48 @@ async function processFile(file) {
                                         outlineWidth: baseStyle2.outlineWidth,
                                     }
                                     const typeValue = phType === "sldNum" ? "slideNumber" : phType === "dt" ? "date" : "footer"
+                                    
+                                    // If no content found, generate default values for date and slide number
+                                    let finalContent = content
+                                    if (!finalContent && (phType === "dt" || phType === "sldNum")) {
+                                        let defaultText = ""
+                                        if (phType === "dt") {
+                                            // Generate current date
+                                            const now = new Date()
+                                            defaultText = now.toLocaleDateString("tr-TR", { 
+                                                year: "numeric", 
+                                                month: "long", 
+                                                day: "numeric" 
+                                            })
+                                        } else if (phType === "sldNum") {
+                                            // Use slide number
+                                            defaultText = String(slideNumber)
+                                        }
+                                        
+                                        if (defaultText) {
+                                            finalContent = {
+                                                text: defaultText,
+                                                paragraphs: [{
+                                                    text: defaultText,
+                                                    bullet: { type: "none", level: 0 },
+                                                    align: topStyle2.align || null,
+                                                    runs: [{
+                                                        text: defaultText,
+                                                        style: {
+                                                            fontFamily: topStyle2.fontFamily,
+                                                            fontSize: topStyle2.fontSize,
+                                                            bold: topStyle2.bold,
+                                                            italic: topStyle2.italic,
+                                                            underline: topStyle2.underline,
+                                                            color: topStyle2.color,
+                                                            backgroundColor: null,
+                                                        }
+                                                    }]
+                                                }]
+                                            }
+                                        }
+                                    }
+                                    
                                     orderedElements.push({
                                         id: `s${slideNumber}-layout${orderedElements.length + 1}`,
                                         kind: "shape",
@@ -1050,7 +1341,7 @@ async function processFile(file) {
                                         placeholderType: phType,
                                         zIndex: ++orderedZ,
                                         geometry: geom,
-                                        content,
+                                        content: finalContent,
                                         style: topStyle2,
                                         shapeType: null,
                                     })

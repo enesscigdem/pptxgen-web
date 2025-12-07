@@ -239,10 +239,14 @@ function createElementDiv(el, scaleX, scaleY) {
 
     const div = document.createElement("div")
     div.className = "slide-element"
+    div.style.position = "absolute"
     div.style.left = el.geometry.xCm * 37.8 * scaleX + "px"
     div.style.top = el.geometry.yCm * 37.8 * scaleY + "px"
     div.style.width = el.geometry.wCm * 37.8 * scaleX + "px"
     div.style.height = el.geometry.hCm * 37.8 * scaleY + "px"
+    div.style.boxSizing = "border-box"
+    // Default overflow - will be adjusted per element type
+    div.style.overflow = "visible"
 
     if (el.geometry.rot && el.geometry.rot !== 0) {
         div.style.transform = `rotate(${el.geometry.rot}deg)`
@@ -254,18 +258,46 @@ function createElementDiv(el, scaleX, scaleY) {
 
     // Chart element
     if (el.kind === "chart") {
-        div.style.background = "#eff6ff"
+        div.style.background = "#f8fafc"
         div.style.border = "2px solid #3b82f6"
         div.style.borderRadius = "8px"
         div.style.display = "flex"
+        div.style.flexDirection = "column"
         div.style.alignItems = "center"
         div.style.justifyContent = "center"
-        div.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`
+        div.style.padding = "8px"
+        div.style.fontSize = "12px"
+        div.style.color = "#1e40af"
+        
+        if (el.chartData && el.chartData.type) {
+            const chartType = el.chartData.type
+            const seriesCount = el.chartData.series ? el.chartData.series.length : 0
+            div.innerHTML = `
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" style="margin-bottom: 4px;">
+                    <line x1="12" y1="20" x2="12" y2="10"/>
+                    <line x1="18" y1="20" x2="18" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="16"/>
+                </svg>
+                <div style="text-align: center; font-weight: 600;">${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart</div>
+                <div style="font-size: 10px; opacity: 0.7;">${seriesCount} series</div>
+            `
+        } else {
+            div.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+                    <line x1="12" y1="20" x2="12" y2="10"/>
+                    <line x1="18" y1="20" x2="18" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="16"/>
+                </svg>
+                <div style="margin-top: 4px; font-size: 11px;">Chart</div>
+            `
+        }
         return div
     }
 
     // Image element
-    if (el.type === "image") {
+    if (el.type === "image" || el.type === "icon") {
+        // Allow images to overflow their container to prevent cropping
+        div.style.overflow = "visible"
         let isEmf = false
         if (el.imageName) {
             const ext = el.imageName.split(".").pop().toLowerCase()
@@ -275,13 +307,38 @@ function createElementDiv(el, scaleX, scaleY) {
         }
 
         if (isEmf) {
-            div.style.background = "#f3f4f6"
-            div.style.display = "flex"
-            div.style.alignItems = "center"
-            div.style.justifyContent = "center"
-            div.style.color = "#9ca3af"
-            div.style.fontSize = "11px"
-            div.textContent = "[EMF/WMF]"
+            // Try to display EMF/WMF as base64 data URL if available
+            if (el.imageBase64) {
+                // Create an object URL or try to display it
+                // Note: Browsers can't directly display EMF/WMF, but we can show the base64 data
+                div.style.background = "#f3f4f6"
+                div.style.display = "flex"
+                div.style.flexDirection = "column"
+                div.style.alignItems = "center"
+                div.style.justifyContent = "center"
+                div.style.color = "#6b7280"
+                div.style.fontSize = "10px"
+                div.style.padding = "8px"
+                div.innerHTML = `
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom: 4px; opacity: 0.5;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21,15 16,10 5,21"/>
+                    </svg>
+                    <div style="text-align: center;">
+                        <div style="font-weight: 600; margin-bottom: 2px;">${el.imageName ? el.imageName.split('.').pop().toUpperCase() : 'EMF/WMF'}</div>
+                        <div style="font-size: 9px; opacity: 0.7;">Vector Image</div>
+                    </div>
+                `
+            } else {
+                div.style.background = "#f3f4f6"
+                div.style.display = "flex"
+                div.style.alignItems = "center"
+                div.style.justifyContent = "center"
+                div.style.color = "#9ca3af"
+                div.style.fontSize = "11px"
+                div.textContent = "[EMF/WMF]"
+            }
         } else if (el.imageBase64 && el.imageBase64.startsWith("data:image/tiff")) {
             div.style.background = "#f3f4f6"
             div.style.display = "flex"
@@ -295,7 +352,8 @@ function createElementDiv(el, scaleX, scaleY) {
             img.src = el.imageBase64 || ""
             img.style.width = "100%"
             img.style.height = "100%"
-            img.style.objectFit = "cover"
+            img.style.objectFit = "contain"
+            img.style.objectPosition = "center"
             img.loading = "lazy"
             img.onerror = () => {
                 img.style.display = "none"
@@ -340,19 +398,149 @@ function createElementDiv(el, scaleX, scaleY) {
 
         // Shape with text content
         if (el.content && el.content.paragraphs && el.content.paragraphs.length) {
-            // Apply overall text alignment
-            const align = el.style?.align || el.content.paragraphs[0]?.align || null
-            if (align) {
-                if (align === "ctr" || align === "center") div.style.textAlign = "center"
-                else if (align === "r") div.style.textAlign = "right"
-                else if (align === "l") div.style.textAlign = "left"
+            // Generate default content for date and slide number placeholders if empty
+            if ((el.placeholderType === "dt" || el.placeholderType === "sldNum") && 
+                (!el.content.text || el.content.text.trim() === "")) {
+                if (el.placeholderType === "dt") {
+                    const now = new Date()
+                    const defaultDate = now.toLocaleDateString("tr-TR", { 
+                        year: "numeric", 
+                        month: "long", 
+                        day: "numeric" 
+                    })
+                    el.content.text = defaultDate
+                    if (el.content.paragraphs[0]) {
+                        el.content.paragraphs[0].text = defaultDate
+                        if (el.content.paragraphs[0].runs.length === 0) {
+                            el.content.paragraphs[0].runs = [{
+                                text: defaultDate,
+                                style: el.style || {}
+                            }]
+                        } else {
+                            el.content.paragraphs[0].runs[0].text = defaultDate
+                        }
+                    }
+                } else if (el.placeholderType === "sldNum") {
+                    const slide = slides[activeSlideIndex]
+                    const slideNum = slide?.slideNumber || activeSlideIndex + 1
+                    const defaultSlideNum = String(slideNum)
+                    el.content.text = defaultSlideNum
+                    if (el.content.paragraphs[0]) {
+                        el.content.paragraphs[0].text = defaultSlideNum
+                        if (el.content.paragraphs[0].runs.length === 0) {
+                            el.content.paragraphs[0].runs = [{
+                                text: defaultSlideNum,
+                                style: el.style || {}
+                            }]
+                        } else {
+                            el.content.paragraphs[0].runs[0].text = defaultSlideNum
+                        }
+                    }
+                }
             }
+            // Apply overall text alignment - check shape style first, then paragraph
+            let defaultAlign = el.style?.align || null
+            if (!defaultAlign && el.content.paragraphs[0]?.align) {
+                defaultAlign = el.content.paragraphs[0].align
+            }
+            // Also check if alignment is in the first paragraph's runs style (some PPTX files store it there)
+            if (!defaultAlign && el.content.paragraphs[0]?.runs?.[0]?.style) {
+                // Alignment is typically at paragraph level, not run level, but check anyway
+            }
+            if (defaultAlign) {
+                if (defaultAlign === "ctr" || defaultAlign === "center" || defaultAlign === "centered") {
+                    div.style.textAlign = "center"
+                } else if (defaultAlign === "r" || defaultAlign === "right") {
+                    div.style.textAlign = "right"
+                } else if (defaultAlign === "l" || defaultAlign === "left") {
+                    div.style.textAlign = "left"
+                } else if (defaultAlign === "just" || defaultAlign === "justify") {
+                    div.style.textAlign = "justify"
+                }
+            } else {
+                // Default to center for title placeholders, left for others
+                if (el.placeholderType === "title" || el.placeholderType === "ctrTitle") {
+                    div.style.textAlign = "center"
+                } else {
+                    div.style.textAlign = "left"
+                }
+            }
+            
+            // Apply vertical alignment
+            if (el.style?.verticalAlign) {
+                const vAlign = el.style.verticalAlign
+                if (vAlign === "top" || vAlign === "t") div.style.justifyContent = "flex-start"
+                else if (vAlign === "middle" || vAlign === "mid" || vAlign === "ctr") div.style.justifyContent = "center"
+                else if (vAlign === "bottom" || vAlign === "b") div.style.justifyContent = "flex-end"
+            } else {
+                // Default vertical alignment for title placeholders
+                if (el.placeholderType === "title" || el.placeholderType === "ctrTitle") {
+                    div.style.justifyContent = "center"
+                }
+            }
+            
+            // Apply text direction (vertical text)
+            if (el.style?.textDirection) {
+                const textDir = el.style.textDirection
+                if (textDir === "vert" || textDir === "vertical") {
+                    div.style.writingMode = "vertical-rl"
+                    div.style.textOrientation = "upright"
+                }
+            }
+            
+            // Set display to flex for vertical alignment
+            if (el.style?.verticalAlign || el.placeholderType === "title" || el.placeholderType === "ctrTitle") {
+                div.style.display = "flex"
+                div.style.flexDirection = "column"
+            }
+            
+            // Apply text wrapping - but don't clip content unnecessarily
+            if (el.style?.wrap === "none" || el.style?.wrap === "false") {
+                div.style.whiteSpace = "nowrap"
+                div.style.overflow = "visible"
+                div.style.textOverflow = "ellipsis"
+            } else {
+                div.style.wordWrap = "break-word"
+                div.style.overflowWrap = "break-word"
+                div.style.overflow = "visible"
+            }
+            
+            // Ensure text container doesn't clip content
+            div.style.padding = "2px"
+            
             // Maintain numbering counters per indentation level for numbered lists
             const numberCounters = {}
             el.content.paragraphs.forEach((p, pIndex) => {
                 const pEl = document.createElement("div")
                 // Slightly tighter line-height for more accurate rendering
                 pEl.style.lineHeight = "1.2"
+                pEl.style.margin = "0"
+                pEl.style.padding = "0"
+                
+                // Apply paragraph-level alignment if different from default
+                if (p.align && p.align !== defaultAlign) {
+                    if (p.align === "ctr" || p.align === "center" || p.align === "centered") {
+                        pEl.style.textAlign = "center"
+                    } else if (p.align === "r" || p.align === "right") {
+                        pEl.style.textAlign = "right"
+                    } else if (p.align === "l" || p.align === "left") {
+                        pEl.style.textAlign = "left"
+                    } else if (p.align === "just" || p.align === "justify") {
+                        pEl.style.textAlign = "justify"
+                    }
+                } else if (defaultAlign) {
+                    // Apply default alignment if paragraph doesn't have its own
+                    if (defaultAlign === "ctr" || defaultAlign === "center" || defaultAlign === "centered") {
+                        pEl.style.textAlign = "center"
+                    } else if (defaultAlign === "r" || defaultAlign === "right") {
+                        pEl.style.textAlign = "right"
+                    } else if (defaultAlign === "l" || defaultAlign === "left") {
+                        pEl.style.textAlign = "left"
+                    } else if (defaultAlign === "just" || defaultAlign === "justify") {
+                        pEl.style.textAlign = "justify"
+                    }
+                }
+                
                 // Indent according to bullet level
                 const level = (p.bullet && typeof p.bullet.level === "number") ? p.bullet.level : 0
                 if (level > 0) {
@@ -384,7 +572,8 @@ function createElementDiv(el, scaleX, scaleY) {
                 // Runs (text segments)
                 p.runs.forEach((run) => {
                     const span = document.createElement("span")
-                    span.textContent = run.text
+                    // Preserve whitespace and empty text
+                    span.textContent = run.text || ""
                     // Font size: run-level overrides shape-level
                     if (run.style?.fontSize) span.style.fontSize = ((run.style.fontSize * 96) / 72) * scaleY + "px"
                     else if (el.style?.fontSize) span.style.fontSize = ((el.style.fontSize * 96) / 72) * scaleY + "px"
@@ -401,6 +590,11 @@ function createElementDiv(el, scaleX, scaleY) {
                     // Text color
                     if (run.style?.color) span.style.color = run.style.color
                     else if (el.style?.color) span.style.color = el.style.color
+                    // Text background color (highlight)
+                    if (run.style?.backgroundColor) {
+                        span.style.backgroundColor = run.style.backgroundColor
+                        span.style.padding = "2px 4px"
+                    }
                     pEl.appendChild(span)
                 })
                 div.appendChild(pEl)
@@ -421,9 +615,15 @@ function createElementDiv(el, scaleX, scaleY) {
         if (el.style?.underline) div.style.textDecoration = "underline"
         if (el.style?.color) div.style.color = el.style.color
         if (el.style?.align) {
-            if (el.style.align === "ctr" || el.style.align === "center") div.style.textAlign = "center"
-            else if (el.style.align === "r") div.style.textAlign = "right"
-            else if (el.style.align === "l") div.style.textAlign = "left"
+            if (el.style.align === "ctr" || el.style.align === "center" || el.style.align === "centered") {
+                div.style.textAlign = "center"
+            } else if (el.style.align === "r" || el.style.align === "right") {
+                div.style.textAlign = "right"
+            } else if (el.style.align === "l" || el.style.align === "left") {
+                div.style.textAlign = "left"
+            } else if (el.style.align === "just" || el.style.align === "justify") {
+                div.style.textAlign = "justify"
+            }
         }
         return div
     }
