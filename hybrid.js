@@ -12,8 +12,9 @@ let originalPptxFile = null; // Orijinal PPTX dosyası (yeniden PDF oluşturmak 
 let pptxZip = null; // JSZip instance (XML düzenlemek için)
 let currentPdfBlob = null; // Güncellenmiş PDF blob (download için)
 let currentPptxBlob = null; // Güncellenmiş PPTX blob (download için)
-// Server URL - Production'da environment variable'dan al, yoksa localhost kullan
-const HYBRID_SERVER = window.HYBRID_SERVER_URL || 'http://localhost:3001';
+// Server URL - Render.com production URL
+// Development için: hybrid.html'de window.HYBRID_SERVER_URL = 'http://localhost:3001' yapabilirsiniz
+const HYBRID_SERVER = window.HYBRID_SERVER_URL || 'https://pptx-hybrid-server.onrender.com';
 
 // File input
 document.getElementById('fileInput').addEventListener('change', async (e) => {

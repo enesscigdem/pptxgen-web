@@ -7,11 +7,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <!-- Server URL Configuration - Production'da burayı güncelle -->
+    <!-- Server URL Configuration -->
     <script>
-        // Render.com veya başka bir hosting için URL'leri buraya ekle
-        // window.HYBRID_SERVER_URL = 'https://your-hybrid-server.onrender.com';
-        // window.CONVERT_SERVER_URL = 'https://your-convert-server.onrender.com';
+        // Render.com production URL - HER ZAMAN kullanılır
+        // Development için: Bu satırı yorum satırı yap ve alttaki satırı aç
+        window.HYBRID_SERVER_URL = 'https://pptx-hybrid-server.onrender.com';
+        
+        // Development (localhost) için:
+        // window.HYBRID_SERVER_URL = 'http://localhost:3001';
     </script>
     <style>
         .hybrid-layout {
