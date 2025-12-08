@@ -9,12 +9,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <!-- Server URL Configuration -->
     <script>
-        // Render.com production URL - HER ZAMAN kullanılır
-        // Development için: Bu satırı yorum satırı yap ve alttaki satırı aç
-        window.HYBRID_SERVER_URL = 'https://pptx-hybrid-server.onrender.com';
+        // Otomatik URL seçimi: hybrid.js içinde yapılıyor
+        // Localhost'ta otomatik olarak localhost:3001 kullanılır
+        // Production'da otomatik olarak Render.com URL'si kullanılır
         
-        // Development (localhost) için:
-        // window.HYBRID_SERVER_URL = 'http://localhost:3001';
+        // Manuel override için (isteğe bağlı):
+        // window.HYBRID_SERVER_URL = 'http://localhost:3001'; // Localhost için
+        // window.HYBRID_SERVER_URL = 'https://pptx-hybrid-server.onrender.com'; // Production için
     </script>
     <style>
         .hybrid-layout {
