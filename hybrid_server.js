@@ -5,20 +5,51 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 function quote(f) {
-    return `'${f.replace(/'/g, `'\''`)}'`;
+    const platform = os.platform();
+    if (platform === 'win32') {
+        // Windows'ta çift tırnak kullan ve içindeki çift tırnakları escape et
+        return `"${f.replace(/"/g, '""')}"`;
+    } else {
+        // Unix/Linux/macOS'ta tek tırnak kullan
+        return `'${f.replace(/'/g, `'\''`)}'`;
+    }
 }
 
 /**
  * LibreOffice binary yolunu bul
  */
 function findLibreOffice() {
+    const platform = os.platform();
+    
     // macOS
     const macPath = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
     if (fs.existsSync(macPath)) {
         return macPath;
     }
     
-    // Linux/Windows - PATH'te ara
+    // Windows - Standart yolu kontrol et
+    if (platform === 'win32') {
+        const winPaths = [
+            "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+            "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe"
+        ];
+        
+        for (const winPath of winPaths) {
+            if (fs.existsSync(winPath)) {
+                return winPath;
+            }
+        }
+        
+        // PATH'te ara (Windows'ta where.exe kullan)
+        try {
+            execSync("where.exe soffice", { stdio: 'ignore' });
+            return "soffice";
+        } catch (e) {
+            throw new Error("LibreOffice bulunamadı! Lütfen LibreOffice'i kurun.");
+        }
+    }
+    
+    // Linux - PATH'te ara
     try {
         execSync("which libreoffice", { stdio: 'ignore' });
         return "libreoffice";
@@ -255,7 +286,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ error: "Not found" }));
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 server.timeout = 300000; // 5 dakika timeout
 server.keepAliveTimeout = 300000;
 server.listen(PORT, () => {

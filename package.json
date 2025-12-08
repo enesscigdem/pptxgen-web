@@ -1,0 +1,20 @@
+{
+  "name": "pptxgen-web",
+  "version": "1.0.0",
+  "description": "PPTX Analyzer - Hybrid Editor",
+  "main": "hybrid_server.js",
+  "scripts": {
+    "start": "node hybrid_server.js",
+    "start:hybrid": "node hybrid_server.js",
+    "start:convert": "node convert_server.js",
+    "start:all": "concurrently \"node hybrid_server.js\" \"node convert_server.js\""
+  },
+  "keywords": ["pptx", "pdf", "presentation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
+

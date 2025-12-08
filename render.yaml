@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: hybrid-server
+    env: node
+    plan: free
+    buildCommand: echo "No build needed"
+    startCommand: node hybrid_server.js
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: convert-server
+    env: node
+    plan: free
+    buildCommand: echo "No build needed"
+    startCommand: node convert_server.js
+    envVars:
+      - key: PORT
+        value: 3002
+      - key: NODE_ENV
+        value: production
+
